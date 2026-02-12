@@ -114,7 +114,12 @@ export class GeminiClient {
 
       return { result, usage };
     } catch (error) {
-      this.logger.error({ error }, 'Gemini API call failed after retries');
+      const errorDetails = {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        error: error,
+      };
+      this.logger.error(errorDetails, 'Gemini API call failed after retries');
       throw error;
     }
   }

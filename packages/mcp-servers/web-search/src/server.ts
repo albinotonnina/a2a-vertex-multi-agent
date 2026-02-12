@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -123,7 +124,7 @@ function createMCPServer(): Server {
 }
 
 /**
- * Main server setup with Fastify and SSE transport.
+ * Main server setup with Fastify and Streamable HTTP transport.
  */
 async function main() {
   const PORT = parseInt(process.env.PORT ?? '3100', 10);
@@ -146,9 +147,6 @@ async function main() {
     },
   });
 
-  // Create MCP server once at startup
-  const mcpServer = createMCPServer();
-
   // Health check endpoint
   app.get('/health', async () => {
     return {
@@ -159,23 +157,79 @@ async function main() {
     };
   });
 
-  // SSE endpoint for MCP
-  app.get('/sse', async (_request, reply) => {
-    const transport = new SSEServerTransport('/message', reply.raw);
+  // Store active transports by session ID
+  const sessions = new Map<string, { server: Server; transport: StreamableHTTPServerTransport }>();
 
+  /**
+   * Handle all MCP requests (POST and GET) on a single /mcp endpoint.
+   * The StreamableHTTPServerTransport routes initialization, messages, and SSE streams internally.
+   */
+  app.post('/mcp', async (request, reply) => {
+    // Check for existing session
+    const sessionId = request.headers['mcp-session-id'] as string | undefined;
+    const session = sessionId ? sessions.get(sessionId) : undefined;
+
+    if (session) {
+      // Existing session — forward request
+      await session.transport.handleRequest(request.raw, reply.raw, request.body);
+      return reply.hijack();
+    }
+
+    // Reject non-init requests with unknown session
+    if (sessionId) {
+      return reply.code(404).send({ error: 'Session not found' });
+    }
+
+    // New session (no session header) — create transport and MCP server
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+
+    const mcpServer = createMCPServer();
     await mcpServer.connect(transport);
 
-    app.log.info('MCP client connected via SSE');
+    // Process the initial request (initialize handshake) — this generates the session ID
+    await transport.handleRequest(request.raw, reply.raw, request.body);
 
-    // Keep connection alive
-    reply.raw.on('close', () => {
-      app.log.info('MCP client disconnected');
-    });
+    // Store session now that the transport has a session ID
+    const newSessionId = transport.sessionId;
+    if (newSessionId) {
+      sessions.set(newSessionId, { server: mcpServer, transport });
+      app.log.info({ sessionId: newSessionId }, 'New MCP session created');
+
+      transport.onclose = () => {
+        sessions.delete(newSessionId);
+        app.log.info({ sessionId: newSessionId }, 'MCP session closed');
+      };
+    }
+
+    return reply.hijack();
   });
 
-  // Message endpoint for MCP
-  app.post('/message', async (_request, reply) => {
-    // SSE transport handles this
+  // GET /mcp — SSE stream for server-to-client notifications
+  app.get('/mcp', async (request, reply) => {
+    const sessionId = request.headers['mcp-session-id'] as string | undefined;
+
+    if (!sessionId || !sessions.has(sessionId)) {
+      return reply.code(400).send({ error: 'Invalid or missing session ID' });
+    }
+
+    const session = sessions.get(sessionId)!;
+    await session.transport.handleRequest(request.raw, reply.raw);
+    return reply.hijack();
+  });
+
+  // DELETE /mcp — explicit session termination
+  app.delete('/mcp', async (request, reply) => {
+    const sessionId = request.headers['mcp-session-id'] as string | undefined;
+
+    if (!sessionId || !sessions.has(sessionId)) {
+      return reply.code(404).send({ error: 'Session not found' });
+    }
+
+    const session = sessions.get(sessionId)!;
+    await session.transport.close();
+    sessions.delete(sessionId);
     return reply.code(200).send();
   });
 
@@ -183,7 +237,7 @@ async function main() {
     await app.listen({ port: PORT, host: HOST });
     console.log(`🔍 MCP Web Search Server running on http://${HOST}:${PORT}`);
     console.log(`   Health: http://${HOST}:${PORT}/health`);
-    console.log(`   SSE: http://${HOST}:${PORT}/sse`);
+    console.log(`   MCP:    http://${HOST}:${PORT}/mcp`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -194,6 +248,11 @@ async function main() {
   signals.forEach((signal) => {
     process.on(signal, async () => {
       app.log.info(`Received ${signal}, shutting down gracefully...`);
+      // Close all sessions
+      for (const [id, session] of sessions) {
+        await session.transport.close();
+        sessions.delete(id);
+      }
       await app.close();
       process.exit(0);
     });

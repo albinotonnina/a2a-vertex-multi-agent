@@ -97,6 +97,43 @@ async function main() {
     };
   });
 
+  // Metrics endpoint
+  app.get('/metrics', async () => {
+    try {
+      // Fetch metrics from all agents
+      const [researchMetrics, analysisMetrics, writerMetrics] = await Promise.all([
+        fetch(`${process.env.RESEARCH_AGENT_URL ?? 'http://localhost:3001'}/metrics`)
+          .then((r) => r.json())
+          .catch(() => null),
+        fetch(`${process.env.ANALYSIS_AGENT_URL ?? 'http://localhost:3002'}/metrics`)
+          .then((r) => r.json())
+          .catch(() => null),
+        fetch(`${process.env.WRITER_AGENT_URL ?? 'http://localhost:3003'}/metrics`)
+          .then((r) => r.json())
+          .catch(() => null),
+      ]);
+
+      return {
+        service: 'orchestrator',
+        version: '0.1.0',
+        timestamp: new Date().toISOString(),
+        agents: {
+          research: researchMetrics,
+          analysis: analysisMetrics,
+          writer: writerMetrics,
+        },
+      };
+    } catch (error) {
+      app.log.error({ error }, 'Failed to fetch agent metrics');
+      return {
+        service: 'orchestrator',
+        version: '0.1.0',
+        timestamp: new Date().toISOString(),
+        error: 'Failed to fetch agent metrics',
+      };
+    }
+  });
+
   // Execute workflow endpoint
   app.post<{ Body: ExecuteWorkflowRequest }>(
     '/api/v1/workflow/execute',
@@ -154,6 +191,7 @@ async function main() {
     await app.listen({ port: PORT, host: HOST });
     console.log(`🎭 Orchestrator running on http://${HOST}:${PORT}`);
     console.log(`   Health: http://${HOST}:${PORT}/health`);
+    console.log(`   Metrics: http://${HOST}:${PORT}/metrics`);
     console.log(`   API: POST http://${HOST}:${PORT}/api/v1/workflow/execute`);
     console.log('');
     console.log('   Example request:');

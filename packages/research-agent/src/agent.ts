@@ -40,14 +40,19 @@ Output format:
 
   /**
    * Register tools available to this agent.
-   * The web_search tool is provided via MCP server.
+   * Uses MCP web search when configured, falls back to mock for local dev.
    */
   protected async registerTools(): Promise<Tool[]> {
-    // Temporary: Add a mock web search tool since MCP isn't working yet
+    // If MCP client is connected, tools are registered via base class (mcpTools)
+    if (this.mcpClient?.isConnected()) {
+      return [];
+    }
+
+    // Fallback: mock tool for local development without MCP server
     return [
       {
         name: 'web_search',
-        description: 'Search the web for information (mock implementation)',
+        description: 'Search the web for current information',
         parameters: {
           type: 'object',
           properties: {
@@ -60,16 +65,22 @@ Output format:
         },
         execute: async (params) => {
           const query = params.query as string;
-          // Mock search results
-          return {
+          return JSON.stringify({
+            query,
             results: [
               {
-                title: `Result for: ${query}`,
-                url: 'https://example.com',
-                snippet: `Mock search result for "${query}". In production, this would use real web search via MCP.`,
+                title: `Current information about: ${query}`,
+                url: 'https://example.com/article1',
+                snippet: `Comprehensive overview of ${query}. This mock demonstrates web search integration.`,
+              },
+              {
+                title: `Latest developments in ${query}`,
+                url: 'https://example.com/article2',
+                snippet: `Recent updates related to ${query}. In production, this would use real search results.`,
               },
             ],
-          };
+            timestamp: new Date().toISOString(),
+          });
         },
       },
     ];

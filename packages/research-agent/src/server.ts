@@ -69,19 +69,17 @@ async function main() {
     {
       projectId: process.env.VERTEX_AI_PROJECT ?? '',
       location: process.env.VERTEX_AI_LOCATION ?? 'us-central1',
-      model: process.env.GEMINI_MODEL ?? 'gemini-1.5-pro',
+      model: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
       temperature: parseFloat(process.env.GEMINI_TEMPERATURE ?? '0.7'),
       maxOutputTokens: parseInt(process.env.GEMINI_MAX_OUTPUT_TOKENS ?? '8192', 10),
     },
-    logger
-    // Temporarily disable MCP to get the system working
-    // TODO: Fix MCP SSE transport compatibility
-    // process.env.MCP_WEB_SEARCH_URL
-    //   ? {
-    //       url: process.env.MCP_WEB_SEARCH_URL,
-    //       timeout: 30000,
-    //     }
-    //   : undefined
+    logger,
+    process.env.MCP_WEB_SEARCH_URL
+      ? {
+          url: process.env.MCP_WEB_SEARCH_URL,
+          timeout: 30000,
+        }
+      : undefined
   );
 
   await agent.initialize();

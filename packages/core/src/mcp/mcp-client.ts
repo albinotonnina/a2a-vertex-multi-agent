@@ -1,5 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 import type { Logger } from '../utils/logger.js';
 
@@ -10,7 +10,7 @@ import type { MCPTool, MCPToolCallRequest, MCPToolCallResponse, MCPServerConfig 
  */
 export class MCPClient {
   private client: Client | null = null;
-  private transport: SSEClientTransport | null = null;
+  private transport: StreamableHTTPClientTransport | null = null;
   private config: MCPServerConfig;
   private logger: Logger;
   private connected = false;
@@ -32,8 +32,8 @@ export class MCPClient {
     try {
       this.logger.info({ url: this.config.url }, 'Connecting to MCP server');
 
-      // Create SSE transport
-      this.transport = new SSEClientTransport(new URL(this.config.url));
+      // Create Streamable HTTP transport
+      this.transport = new StreamableHTTPClientTransport(new URL(this.config.url));
 
       // Create client
       this.client = new Client(
