@@ -53,7 +53,9 @@ export class MCPClient {
       this.logger.info('Successfully connected to MCP server');
     } catch (error) {
       this.logger.error({ error, url: this.config.url }, 'Failed to connect to MCP server');
-      throw new Error(`Failed to connect to MCP server: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to connect to MCP server: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -101,7 +103,10 @@ export class MCPClient {
         },
       }));
 
-      this.logger.debug({ toolCount: tools.length, tools: tools.map((t) => t.name) }, 'Listed MCP tools');
+      this.logger.debug(
+        { toolCount: tools.length, tools: tools.map((t) => t.name) },
+        'Listed MCP tools'
+      );
 
       return tools;
     } catch (error) {

@@ -8,14 +8,21 @@ services:
       dockerfile: docker/Dockerfile.mcp
     container_name: a2a-mcp-web-search
     ports:
-      - "3100:3100"
+      - '3100:3100'
     environment:
       - NODE_ENV=production
       - PORT=3100
       - HOST=0.0.0.0
       - LOG_LEVEL=info
+      - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3100/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3100/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -29,9 +36,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile.agent
     container_name: a2a-research-agent
-    command: ["node", "packages/research-agent/dist/server.js"]
+    command: ['node', 'packages/research-agent/dist/server.js']
     ports:
-      - "3001:3001"
+      - '3001:3001'
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -50,7 +57,13 @@ services:
       mcp-web-search:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3001/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -64,9 +77,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile.agent
     container_name: a2a-analysis-agent
-    command: ["node", "packages/analysis-agent/dist/server.js"]
+    command: ['node', 'packages/analysis-agent/dist/server.js']
     ports:
-      - "3002:3002"
+      - '3002:3002'
     environment:
       - NODE_ENV=production
       - PORT=3002
@@ -81,7 +94,13 @@ services:
     volumes:
       - ${GOOGLE_APPLICATION_CREDENTIALS_PATH:-./credentials}:/app/credentials:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3002/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -95,9 +114,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile.agent
     container_name: a2a-writer-agent
-    command: ["node", "packages/writer-agent/dist/server.js"]
+    command: ['node', 'packages/writer-agent/dist/server.js']
     ports:
-      - "3003:3003"
+      - '3003:3003'
     environment:
       - NODE_ENV=production
       - PORT=3003
@@ -112,7 +131,13 @@ services:
     volumes:
       - ${GOOGLE_APPLICATION_CREDENTIALS_PATH:-./credentials}:/app/credentials:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3003/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -127,7 +152,7 @@ services:
       dockerfile: docker/Dockerfile.orchestrator
     container_name: a2a-orchestrator
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -145,7 +170,13 @@ services:
       writer-agent:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3

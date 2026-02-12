@@ -1,42 +1,164 @@
 import { randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import Fastify from 'fastify';
 import { z } from 'zod';
 
 /**
- * Mock web search function.
- * In production, this would integrate with a real search API (DuckDuckGo, Brave Search, etc.).
+ * Perform real web search using Brave Search API or DuckDuckGo HTML scraping.
  */
 async function performWebSearch(query: string): Promise<string> {
-  // Mock search results for learning/demonstration purposes
-  const mockResults = {
-    query,
-    results: [
-      {
-        title: `Result 1 for: ${query}`,
-        url: 'https://example.com/result1',
-        snippet: `This is a mock search result for the query "${query}". In production, this would return real search results from a search API.`,
-      },
-      {
-        title: `Result 2 for: ${query}`,
-        url: 'https://example.com/result2',
-        snippet: `Another relevant result about ${query}. The web search tool would integrate with services like DuckDuckGo or Brave Search.`,
-      },
-      {
-        title: `Result 3 for: ${query}`,
-        url: 'https://example.com/result3',
-        snippet: `Additional information related to ${query}. This demonstrates how search results would be structured and returned.`,
-      },
-    ],
-    timestamp: new Date().toISOString(),
-  };
+  const braveApiKey = process.env.BRAVE_SEARCH_API_KEY;
 
-  return JSON.stringify(mockResults, null, 2);
+  if (braveApiKey) {
+    return performBraveSearch(query, braveApiKey);
+  } else {
+    return performDuckDuckGoSearch(query);
+  }
+}
+
+/**
+ * Search using Brave Search API (requires API key).
+ * Get free API key at: https://brave.com/search/api/
+ */
+async function performBraveSearch(query: string, apiKey: string): Promise<string> {
+  try {
+    const url = new URL('https://api.search.brave.com/res/v1/web/search');
+    url.searchParams.set('q', query);
+    url.searchParams.set('count', '5');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Accept: 'application/json',
+        'X-Subscription-Token': apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Brave Search API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = (await response.json()) as any;
+    const results = (data.web?.results || []).map((result: any) => ({
+      title: result.title,
+      url: result.url,
+      snippet: result.description,
+    }));
+
+    return JSON.stringify(
+      {
+        query,
+        results,
+        source: 'Brave Search API',
+        timestamp: new Date().toISOString(),
+      },
+      null,
+      2
+    );
+  } catch (error) {
+    console.error('Brave Search error:', error);
+    // Fallback to DuckDuckGo
+    return performDuckDuckGoSearch(query);
+  }
+}
+
+/**
+ * Search using DuckDuckGo HTML (no API key needed).
+ * This is a simple implementation - for production, consider using their API or a library.
+ */
+async function performDuckDuckGoSearch(query: string): Promise<string> {
+  try {
+    const url = new URL('https://html.duckduckgo.com/html/');
+    url.searchParams.set('q', query);
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; A2A-Bot/1.0)',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`DuckDuckGo error: ${response.status}`);
+    }
+
+    const html = await response.text();
+    const results = parseDuckDuckGoResults(html);
+
+    return JSON.stringify(
+      {
+        query,
+        results: results.slice(0, 5), // Limit to 5 results
+        source: 'DuckDuckGo',
+        timestamp: new Date().toISOString(),
+      },
+      null,
+      2
+    );
+  } catch (error) {
+    console.error('DuckDuckGo search error:', error);
+    // Return error as mock results so the agent can still respond
+    return JSON.stringify(
+      {
+        query,
+        results: [
+          {
+            title: 'Search temporarily unavailable',
+            url: 'https://duckduckgo.com',
+            snippet: `Unable to perform web search for "${query}". The search service is temporarily unavailable. This is a fallback response.`,
+          },
+        ],
+        source: 'Fallback',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      },
+      null,
+      2
+    );
+  }
+}
+
+/**
+ * Parse DuckDuckGo HTML results.
+ * Note: HTML parsing is fragile - for production, use an official API.
+ */
+function parseDuckDuckGoResults(html: string): Array<{ title: string; url: string; snippet: string }> {
+  const results: Array<{ title: string; url: string; snippet: string }> = [];
+
+  // Simple regex-based parsing (fragile but works for demo)
+  // Match result blocks in DuckDuckGo HTML
+  const resultRegex =
+    /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([^<]+)<\/a>/g;
+
+  let match;
+  while ((match = resultRegex.exec(html)) !== null && results.length < 10) {
+    const [, url, title, snippet] = match;
+    if (url && title && snippet) {
+      results.push({
+        title: title.trim(),
+        url: decodeURIComponent(url),
+        snippet: snippet.trim().replace(/\s+/g, ' '),
+      });
+    }
+  }
+
+  // If regex parsing failed, try alternative pattern
+  if (results.length === 0) {
+    const altRegex =
+      /<h2[^>]*class="result__title"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?class="result__snippet"[^>]*>([^<]+)</g;
+    while ((match = altRegex.exec(html)) !== null && results.length < 10) {
+      const [, url, title, snippet] = match;
+      if (url && title && snippet) {
+        results.push({
+          title: title.trim(),
+          url: decodeURIComponent(url),
+          snippet: snippet.trim().replace(/\s+/g, ' '),
+        });
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
