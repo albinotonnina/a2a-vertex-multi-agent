@@ -1,0 +1,43 @@
+# Multi-stage build for orchestrator
+FROM node:20-alpine AS base
+
+RUN npm install -g pnpm@9.1.0
+
+WORKDIR /app
+
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* .npmrc ./
+COPY tsconfig.base.json ./
+
+# Stage 1: Install dependencies
+FROM base AS deps
+
+COPY packages/core/package.json ./packages/core/
+COPY packages/orchestrator/package.json ./packages/orchestrator/
+
+RUN pnpm install --frozen-lockfile
+
+# Stage 2: Build
+FROM deps AS builder
+
+COPY packages/core ./packages/core
+COPY packages/orchestrator ./packages/orchestrator
+
+RUN pnpm -r run build
+
+# Stage 3: Production
+FROM node:20-alpine AS runner
+
+RUN npm install -g pnpm@9.1.0
+
+WORKDIR /app
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/packages/core/dist ./packages/core/dist
+COPY --from=builder /app/packages/core/package.json ./packages/core/
+COPY --from=builder /app/packages/orchestrator/dist ./packages/orchestrator/dist
+COPY --from=builder /app/packages/orchestrator/package.json ./packages/orchestrator/
+
+ENV NODE_ENV=production
+
+CMD ["node", "packages/orchestrator/dist/server.js"]

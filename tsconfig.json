@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/research-agent" },
+    { "path": "./packages/analysis-agent" },
+    { "path": "./packages/writer-agent" },
+    { "path": "./packages/orchestrator" },
+    { "path": "./packages/mcp-servers/web-search" }
+  ]
+}

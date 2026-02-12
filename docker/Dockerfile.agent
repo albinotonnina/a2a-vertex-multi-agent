@@ -1,0 +1,59 @@
+# Multi-stage build for agent services
+FROM node:20-alpine AS base
+
+# Install pnpm
+RUN npm install -g pnpm@9.1.0
+
+WORKDIR /app
+
+# Copy workspace files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* .npmrc ./
+COPY tsconfig.base.json ./
+
+# Stage 1: Install dependencies
+FROM base AS deps
+
+# Copy all package.json files
+COPY packages/core/package.json ./packages/core/
+COPY packages/research-agent/package.json ./packages/research-agent/
+COPY packages/analysis-agent/package.json ./packages/analysis-agent/
+COPY packages/writer-agent/package.json ./packages/writer-agent/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Stage 2: Build
+FROM deps AS builder
+
+# Copy source code
+COPY packages/core ./packages/core
+COPY packages/research-agent ./packages/research-agent
+COPY packages/analysis-agent ./packages/analysis-agent
+COPY packages/writer-agent ./packages/writer-agent
+
+# Build packages
+RUN pnpm -r run build
+
+# Stage 3: Production
+FROM node:20-alpine AS runner
+
+RUN npm install -g pnpm@9.1.0
+
+WORKDIR /app
+
+# Copy built artifacts and dependencies
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/packages/core/dist ./packages/core/dist
+COPY --from=builder /app/packages/core/package.json ./packages/core/
+COPY --from=builder /app/packages/research-agent/dist ./packages/research-agent/dist
+COPY --from=builder /app/packages/research-agent/package.json ./packages/research-agent/
+COPY --from=builder /app/packages/analysis-agent/dist ./packages/analysis-agent/dist
+COPY --from=builder /app/packages/analysis-agent/package.json ./packages/analysis-agent/
+COPY --from=builder /app/packages/writer-agent/dist ./packages/writer-agent/dist
+COPY --from=builder /app/packages/writer-agent/package.json ./packages/writer-agent/
+
+ENV NODE_ENV=production
+
+# Default command (override in docker-compose)
+CMD ["node", "packages/research-agent/dist/server.js"]

@@ -1,0 +1,39 @@
+# Dockerfile for MCP servers
+FROM node:20-alpine AS base
+
+RUN npm install -g pnpm@9.1.0
+
+WORKDIR /app
+
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* .npmrc ./
+COPY tsconfig.base.json ./
+
+# Stage 1: Install dependencies
+FROM base AS deps
+
+COPY packages/mcp-servers/web-search/package.json ./packages/mcp-servers/web-search/
+
+RUN pnpm install --frozen-lockfile
+
+# Stage 2: Build
+FROM deps AS builder
+
+COPY packages/mcp-servers/web-search ./packages/mcp-servers/web-search
+
+RUN pnpm -r run build
+
+# Stage 3: Production
+FROM node:20-alpine AS runner
+
+RUN npm install -g pnpm@9.1.0
+
+WORKDIR /app
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/packages/mcp-servers/web-search/dist ./packages/mcp-servers/web-search/dist
+COPY --from=builder /app/packages/mcp-servers/web-search/package.json ./packages/mcp-servers/web-search/
+
+ENV NODE_ENV=production
+
+CMD ["node", "packages/mcp-servers/web-search/dist/server.js"]
